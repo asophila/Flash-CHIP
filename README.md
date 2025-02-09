@@ -1,37 +1,85 @@
-# Revive an outdated C.H.I.P. from factory OS to Debian Buster
-This guide and scripts are based on the excelent work made by https://github.com/Thore-Krug/Flash-CHIP and the guide in https://gist.github.com/luzhuomi/526fbcc30f3522f09eacf20d0f776fa5
+# Revive an outdated C.H.I.P. from factory OS to Debian Bookworm
+This guide is based on community contributions and testing, particularly from Reddit user experiences with upgrading to newer Debian versions.
 
 ## Instructions
-### Part 1: Stock image
+### Part 1: Prepare your Linux machine
 1. Remove the C.H.I.P. from its case (in case you have a Pocket C.H.I.P.).
-2. Connect the FEL and a GROUND pin of the C.H.I.P. (for example, with a paperclip).
-3. Connect the C.H.I.P. its micro USB port to a USB port of your Linux machine. Make sure that the port and cable allow for plenty of power. If you get a FEL error, it may be because the C.H.I.P. is running under-voltage.
-4. On the Linux machine:
-    - run ` git clone https://github.com/asophila/Flash-CHIP.git` to clone this repository
-    - `cd` into the location where you stored this repository
-    - run `sudo chmod +x Flash.sh`
-    - run `./Flash.sh`
-    - Select the version you want to install
-    - Wait until the installation finishes
-    
-### Part 2: Get jessie to connect to the network
-1. Remove the FEL connection (the paperclip)
-2. Unplug 3 seconds
-3. Plug the C.H.I.P. again
-4. Connect to the chip using `sudo screen /dev/ttyACM0`
-5. Use user: chip  and password: chip to connect
-6. run `sudo nmtui` to set-up a wifi connection to YOUR_SSID
-7. run `sudo nmcli c` to show your current connections
-8. run `sudo nmcli c m <YOUR SSID> connection.autoconnect yes` to set autoconnection to YOUR_SSID wifi in case of trouble
-9. use `ip addr | grep "inet " | awk 'NR==2{print $2}' | cut -d/ -f1 ` to get your CHIP_IP. From your linux computer open other terminal and connect using `ssh chip@CHIP_IP`. You can close the terminal running `screen`.
-    
-### Part 3: upgrade debian jessie to debian stretch
-1. run `sudo su -` to allow all the next changes as superuser
-2. run `bash <(curl -s https://raw.githubusercontent.com/asophila/Flash-CHIP/master/CHIP-updater/jessie-to-stretch.sh)` to update from Debian Jessie to Debian Stretch
-3. reboot C.H.I.P. into Debian Stretch
-                    
-### Part 4: upgrade debian stretch to debian buster
-1. From your linux computer open other terminal and connect using `ssh chip@<CHIP IP>`.
-1. run `sudo su -` to allow all the next changes as superuser
-2. run `bash <(curl -s https://raw.githubusercontent.com/asophila/Flash-CHIP/master/CHIP-updater/stretch-to-buster.sh)` to update from Debian Stretch to Debian Buster
-3. reboot C.H.I.P. into Debian Buster
+2. On your Linux machine, install the required dependencies:
+    ```bash
+    sudo apt install u-boot-tools fastboot git build-essential curl libusb-1.0-0-dev pkg-config
+    ```
+3. Add your user to required groups:
+    ```bash
+    sudo usermod -a -G dialout,plugdev $USER
+    ```
+4. Add udev rules for the CHIP:
+    ```bash
+    sudo tee /etc/udev/rules.d/99-allwinner.rules <<EOF
+    SUBSYSTEM=="usb", ATTRS{idVendor}=="1f3a", ATTRS{idProduct}=="efe8", GROUP="plugdev", MODE="0660" SYMLINK+="usb-chip"
+    SUBSYSTEM=="usb", ATTRS{idVendor}=="18d1", ATTRS{idProduct}=="1010", GROUP="plugdev", MODE="0660" SYMLINK+="usb-chip-fastboot"
+    SUBSYSTEM=="usb", ATTRS{idVendor}=="1f3a", ATTRS{idProduct}=="1010", GROUP="plugdev", MODE="0660" SYMLINK+="usb-chip-fastboot"
+    SUBSYSTEM=="usb", ATTRS{idVendor}=="067b", ATTRS{idProduct}=="2303", GROUP="plugdev", MODE="0660" SYMLINK+="usb-serial-adapter"
+    EOF
+    ```
+5. Install the correct version of sunxi-tools:
+    ```bash
+    git clone https://github.com/linux-sunxi/sunxi-tools -b v1.4 && cd sunxi-tools
+    make && sudo make install-tools
+    ```
+6. Get the modified flashing tools:
+    ```bash
+    git clone https://git.nytpu.com/forks/CHIP-tools/ && cd CHIP-tools
+    ```
+
+### Part 2: Flash and Connect
+1. Connect the FEL and a GROUND pin of the C.H.I.P. (for example, with a paperclip)
+2. Connect the C.H.I.P.'s micro USB port to your Linux machine. Make sure to use a good quality cable and power source
+3. Run the flash command:
+    ```bash
+    FEL='sudo sunxi-fel' FASTBOOT='sudo fastboot' SNIB=false ./chip-update-firmware.sh -s
+    ```
+4. After flashing completes:
+    - Remove the FEL connection (paperclip)
+    - Unplug for 3 seconds
+    - Plug the C.H.I.P. back in
+5. Connect to the CHIP:
+    ```bash
+    screen /dev/ttyACM0 115200
+    ```
+6. Login with user: `chip` and password: `chip`
+7. Set up WiFi:
+    ```bash
+    nmcli device wifi connect <YOUR_SSID> password <YOUR_PASSWORD>
+    ```
+
+### Part 3: Upgrade directly to Debian Bookworm
+1. Connect via SSH:
+    ```bash
+    ssh chip@<CHIP_IP>
+    ```
+2. Switch to root:
+    ```bash
+    sudo su -
+    ```
+3. Update the package sources:
+    ```bash
+    sudo tee /etc/apt/sources.list <<EOF
+    deb http://deb.debian.org/debian bookworm contrib main non-free-firmware
+    deb http://deb.debian.org/debian bookworm-updates contrib main non-free-firmware
+    deb http://deb.debian.org/debian bookworm-backports contrib main non-free-firmware
+    deb http://deb.debian.org/debian-security bookworm-security contrib main non-free-firmware
+    EOF
+    ```
+4. Perform the upgrade:
+    ```bash
+    sudo apt update
+    sudo apt -y full-upgrade
+    sudo apt -y autoremove
+    ```
+5. Reboot the C.H.I.P.
+
+## Troubleshooting
+- If you get FEL timeout errors: Try a different USB cable or replug right before flashing
+- If flash succeeds but boot fails: Use a better power source
+- If you get APT errors: Run `sudo apt-get install -f` and `sudo dpkg --configure -a`
+- For Bluetooth issues: Disable if unused with `sudo systemctl disable bluetooth`

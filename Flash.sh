@@ -69,7 +69,8 @@ else
 fi
 
 echo -e "\n Removing incompatible fastboot parameters"
-find . -type f -name "*.sh" -exec sed -i 's///g' {} +
+find . -type f -name "*.sh" -exec sed -i 's/-i 0x1f3a//g' {} +
+#find . -type f -name "*.sh" -exec sed -i 's///g' {} +
 find . -type f -name "*.sh" -exec sed -i 's/\(fastboot\|${FASTBOOT}\)[[:space:]]*-u[[:space:]]*flash/\1 flash/g' {} +
 
 echo -e "\n Installing screen"

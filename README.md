@@ -56,6 +56,10 @@ This guide is based on community contributions and testing, particularly from Re
     ```
 4. Perform the upgrade:
     ```bash
+    # Download and add the keys using the new method
+    wget -qO- https://ftp-master.debian.org/keys/release-11.asc | gpg --dearmor > /etc/apt/trusted.gpg.d/debian-archive.gpg
+    wget -qO- https://ftp-master.debian.org/keys/archive-key-11.asc | gpg --dearmor > /etc/apt/trusted.gpg.d/debian-archive-11.gpg
+    apt update
     sudo apt update
     sudo apt -y full-upgrade
     sudo apt -y autoremove

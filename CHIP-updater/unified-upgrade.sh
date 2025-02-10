@@ -109,10 +109,10 @@ perform_upgrade() {
     
     # Update and upgrade
     apt update
-    apt install -y debian-keyring debian-archive-keyring
+    apt install -y  --force-yes debian-keyring debian-archive-keyring
     apt update
     apt install -y linux-image-armmp
-    apt full-upgrade -y
+    apt full-upgrade -y --force-yes
     apt autoremove -y
     
     # Update X11 config if needed

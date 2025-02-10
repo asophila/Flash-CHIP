@@ -47,9 +47,9 @@
 
 2. Run the upgrade script:
    ```bash
-   wget https://raw.githubusercontent.com/asophila/Flash-CHIP/refs/heads/master/CHIP-updater/upgrade-debian.sh
-   chmod +x upgrade-debian.sh
-   sudo ./upgrade-debian.sh
+   wget https://raw.githubusercontent.com/asophila/Flash-CHIP/refs/heads/master/CHIP-updater/unified-upgrade.sh
+   chmod +x unified-upgrade.sh
+   sudo ./unified-upgrade.sh
    ```
 
 The upgrade script will:

@@ -10,24 +10,7 @@ check_root() {
 
 # Function to get current Debian version
 get_debian_version() {
-    if [ -f /etc/os-release ]; then
-        . /etc/os-release
-        if [ -n "$VERSION_CODENAME" ]; then
-            echo "$VERSION_CODENAME"
-        else
-            # Fallback for older versions
-            case "$PRETTY_NAME" in
-                *"jessie"*) echo "jessie" ;;
-                *"stretch"*) echo "stretch" ;;
-                *"buster"*) echo "buster" ;;
-                *"bullseye"*) echo "bullseye" ;;
-                *"bookworm"*) echo "bookworm" ;;
-                *) echo "unknown" ;;
-            esac
-        fi
-    else
-        echo "unknown"
-    fi
+    grep -o "jessie\|stretch\|buster\|bullseye\|bookworm" /etc/os-release | head -n1 || echo "unknown"
 }
 
 # Source lists for different Debian versions

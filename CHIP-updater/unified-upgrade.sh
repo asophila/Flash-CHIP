@@ -17,39 +17,33 @@ perform_upgrade() {
     local version=$1
     echo "Performing upgrade for $version..."
     
-    # Create new sources.list based on target version
-    case $version in
-        "jessie")
-            cat > /etc/apt/sources.list <<EOF
-deb http://ftp.us.debian.org/debian/ stretch main contrib non-free
-deb-src http://ftp.us.debian.org/debian/ stretch main contrib non-free
-deb http://security.debian.org/ stretch/updates main contrib non-free
-deb-src http://security.debian.org/ stretch/updates main contrib non-free
-EOF
-            ;;
-        "stretch")
-            cat > /etc/apt/sources.list <<EOF
+    # By default, go to buster from any older version
+    if [ "$version" = "jessie" ] || [ "$version" = "stretch" ]; then
+        cat > /etc/apt/sources.list <<EOF
 deb http://deb.debian.org/debian/ buster main contrib non-free
 deb http://security.debian.org/ buster/updates main contrib non-free
 EOF
-            ;;
-        "buster")
-            cat > /etc/apt/sources.list <<EOF
+        version="buster"
+    else
+        case $version in
+            "buster")
+                cat > /etc/apt/sources.list <<EOF
 deb http://deb.debian.org/debian bullseye main contrib non-free
 deb http://deb.debian.org/debian bullseye-updates main contrib non-free
 deb http://deb.debian.org/debian bullseye-backports main contrib non-free
 deb http://security.debian.org/debian-security/ bullseye-security main contrib non-free
 EOF
-            ;;
-        "bullseye")
-            cat > /etc/apt/sources.list <<EOF
+                ;;
+            "bullseye")
+                cat > /etc/apt/sources.list <<EOF
 deb http://deb.debian.org/debian bookworm contrib main non-free-firmware
 deb http://deb.debian.org/debian bookworm-updates contrib main non-free-firmware
 deb http://deb.debian.org/debian bookworm-backports contrib main non-free-firmware
 deb http://deb.debian.org/debian-security bookworm-security contrib main non-free-firmware
 EOF
-            ;;
-    esac
+                ;;
+        esac
+    fi
 
     # Perform upgrade
     DEBIAN_FRONTEND=noninteractive apt-get update
@@ -58,8 +52,8 @@ EOF
     DEBIAN_FRONTEND=noninteractive apt-get dist-upgrade -y --force-yes
     DEBIAN_FRONTEND=noninteractive apt-get autoremove -y --force-yes
 
-    # Version-specific tasks
-    if [ "$version" = "jessie" ]; then
+    # Version-specific tasks for older systems
+    if [ "$version" = "jessie" ] || [ "$version" = "stretch" ]; then
         DEBIAN_FRONTEND=noninteractive apt-get install -y --force-yes locales || true
         if command -v locale-gen >/dev/null 2>&1; then
             locale-gen en_US en_US.UTF-8
@@ -76,13 +70,9 @@ current_version=$(get_debian_version)
 echo "Current Debian version: $current_version"
 
 case $current_version in
-    "jessie")
-        echo "Starting upgrade path: jessie -> stretch -> buster -> bullseye -> bookworm"
-        perform_upgrade "jessie"
-        ;;
-    "stretch")
-        echo "Starting upgrade path: stretch -> buster -> bullseye -> bookworm"
-        perform_upgrade "stretch"
+    "jessie"|"stretch")
+        echo "Starting upgrade path: -> buster -> bullseye -> bookworm"
+        perform_upgrade $current_version
         ;;
     "buster")
         echo "Starting upgrade path: buster -> bullseye -> bookworm"

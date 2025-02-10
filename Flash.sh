@@ -76,26 +76,6 @@ find . -type f -name "*.sh" -exec sed -i 's/\(fastboot\|${FASTBOOT}\)[[:space:]]
 echo -e "\n Installing screen"
 sudo apt install screen -y
 
-# Create a temporary directory for post-flash setup
-mkdir -p post_flash_setup
-
-# Copy setup scripts from CHIP-updater
-cp ../CHIP-updater/wifi-setup.sh post_flash_setup/
-cp ../CHIP-updater/unified-upgrade.sh post_flash_setup/
-chmod +x post_flash_setup/*.sh
-
-# Modify the UBI flashing script to include our setup files
-# First, backup the original script
-cp chip-update-firmware.sh chip-update-firmware.sh.backup
-
-# Add our post-flash setup to the UBI creation
-sed -i '/Creating UBI image/a\
-# Copy setup scripts to rootfs\
-sudo mkdir -p $TMPDIR/rootfs/home/chip/CHIP-updater\
-sudo cp post_flash_setup/* $TMPDIR/rootfs/home/chip/CHIP-updater/\
-sudo chown -R 1000:1000 $TMPDIR/rootfs/home/chip/CHIP-updater\
-sudo chmod +x $TMPDIR/rootfs/home/chip/CHIP-updater/*.sh' chip-update-firmware.sh
-
 # Run the flashing command
 FEL='sudo sunxi-fel' FASTBOOT='sudo fastboot' SNIB=false ./chip-update-firmware.sh -$flavour
 
@@ -110,6 +90,5 @@ echo "1. Remove FEL jumper"
 echo "2. Unplug and replug your CHIP"
 echo "3. Connect using: sudo screen /dev/ttyACM0 115200"
 echo "4. Login with chip/chip"
-echo "5. Run: sudo /home/chip/CHIP-updater/wifi-setup.sh"
-echo "6. After WiFi setup, run: sudo /home/chip/CHIP-updater/unified-upgrade.sh"
+echo "5. Follow the rest of the instructions at "
 echo "================================================================"

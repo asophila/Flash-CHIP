@@ -32,40 +32,71 @@ This guide is based on community contributions and testing, particularly from Re
     ```
 3. Login with user: `chip` and password: `chip`
 4. Set up WiFi:
-    ```bash
-    nmcli device wifi connect <YOUR_SSID> password <YOUR_PASSWORD>
-    ```
+   ```bash
+   sudo nmtui
+   ```
+5. show your current connections:
+   ```bash
+   sudo nmcli c
+   ```
+6. Set autoconnection to your SSID Wifi
+   ```bash
+   sudo nmcli c m <YOUR SSID> connection.autoconnect yes
+   ```
+7. Get your IP Address (you'll need it for ssh connection)
+   ```bash
+   ip addr | grep "inet " | awk 'NR==2{print $2}' | cut -d/ -f1
+   ```
 
-### Part 3: Upgrade directly to Debian Bookworm
+### Part 3: upgrade debian jessie to debian stretch
 1. Connect via SSH:
     ```bash
     ssh chip@<CHIP_IP>
     ```
-2. Switch to root:
+2. Switch to root and upgrade:
     ```bash
     sudo su -
+    bash <(curl -s https://raw.githubusercontent.com/asophila/Flash-CHIP/master/CHIP-updater/jessie-to-stretch.sh)
     ```
-3. Update the package sources:
+3. Reboot C.H.I.P. into Debian Stretch
+
+### Part 4: upgrade from stretch to buster
+1. Connect via SSH:
     ```bash
-    sudo tee /etc/apt/sources.list <<EOF
-    deb http://deb.debian.org/debian bookworm contrib main non-free-firmware
-    deb http://deb.debian.org/debian bookworm-updates contrib main non-free-firmware
-    deb http://deb.debian.org/debian bookworm-backports contrib main non-free-firmware
-    deb http://deb.debian.org/debian-security bookworm-security contrib main non-free-firmware
-    EOF
+    ssh chip@<CHIP_IP>
     ```
-4. Perform the upgrade:
+2. Switch to root and upgrade:
     ```bash
-    # Download and add the keys using the new method
-    wget -qO- https://ftp-master.debian.org/keys/release-11.asc | gpg --dearmor > /etc/apt/trusted.gpg.d/debian-archive.gpg
-    wget -qO- https://ftp-master.debian.org/keys/archive-key-11.asc | gpg --dearmor > /etc/apt/trusted.gpg.d/debian-archive-11.gpg
-    apt update
-    sudo apt update
-    sudo apt -y full-upgrade
-    sudo apt -y autoremove
+    sudo su -
+    bash <(curl -s https://raw.githubusercontent.com/asophila/Flash-CHIP/master/CHIP-updater/stretch-to-buster.sh)
     ```
-5. Reboot the C.H.I.P.
-  
+3. Reboot C.H.I.P. into Debian Buster
+
+### Part 5: upgrade from buster to bullseye
+1. Connect via SSH:
+    ```bash
+    ssh chip@<CHIP_IP>
+    ```
+2. Switch to root and upgrade:
+    ```bash
+    sudo su -
+    bash <(curl -s https://raw.githubusercontent.com/asophila/Flash-CHIP/master/CHIP-updater/buster-to-bullseye.sh)
+    ```
+3. Reboot C.H.I.P. into Debian Buster
+
+### Part 6: upgrade from bullseye to bookworm
+1. Connect via SSH:
+    ```bash
+    ssh chip@<CHIP_IP>
+    ```
+2. Switch to root and upgrade:
+    ```bash
+    sudo su -
+    bash <(curl -s https://raw.githubusercontent.com/asophila/Flash-CHIP/master/CHIP-updater/bullseye-to-bookworm.sh)
+    ```
+3. Reboot C.H.I.P. into Debian Bookworm
+
+ 
 ### Part 4: Install QoL enhancements
 1. Download and run enhancements. Define a unique and secret ntfy.sh channel to get your ip upon wifi connection.
    ```bash

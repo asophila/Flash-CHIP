@@ -53,10 +53,10 @@ sudo apt -y install \
  sunxi-tools \
 
 echo -e "\n Adding current user to dialout group"
-sudo usermod -a -G dialout $(logname)
+sudo usermod -a -G dialout $USER
 
 echo -e "\n Adding current user to plugdev group"
-sudo usermod -a -G plugdev $(logname)
+sudo usermod -a -G plugdev $USER
 
 
 echo -e "\n Adding udev rule for Allwinner device"
@@ -75,9 +75,9 @@ if [ -d CHIP-tools ]; then
  elif [ ! -d CHIP-tools ]; then
  git clone https://github.com/Project-chip-crumbs/CHIP-tools.git
 
-echo -e "\n Removing strict check to avoid '-i' errors"
- find . -type f -exec sed -i 's///g' {} +
- find . -type f -exec sed -i 's///g' {} +
+echo -e "\n Removing incompatible fastboot parameters"
+find . -type f -name "*.sh" -exec sed -i 's/-i 0x1f3a//g' {} +
+find . -type f -name "*.sh" -exec sed -i 's/\(fastboot\|${FASTBOOT}\)[[:space:]]*-u[[:space:]]*flash/\1 flash/g' {} +
 
 echo -e "\n Installing screen to connect through serial console"
  sudo apt install screen -y
@@ -85,4 +85,3 @@ echo -e "\n Installing screen to connect through serial console"
  cd  CHIP-tools 
  FEL='sudo sunxi-fel' FASTBOOT='sudo fastboot' SNIB=false ./chip-update-firmware.sh -$flavour
 fi
-

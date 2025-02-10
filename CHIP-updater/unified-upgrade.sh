@@ -12,7 +12,19 @@ check_root() {
 get_debian_version() {
     if [ -f /etc/os-release ]; then
         . /etc/os-release
-        echo "$VERSION_CODENAME"
+        if [ -n "$VERSION_CODENAME" ]; then
+            echo "$VERSION_CODENAME"
+        else
+            # Fallback for older versions
+            case "$PRETTY_NAME" in
+                *"jessie"*) echo "jessie" ;;
+                *"stretch"*) echo "stretch" ;;
+                *"buster"*) echo "buster" ;;
+                *"bullseye"*) echo "bullseye" ;;
+                *"bookworm"*) echo "bookworm" ;;
+                *) echo "unknown" ;;
+            esac
+        fi
     else
         echo "unknown"
     fi

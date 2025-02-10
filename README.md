@@ -25,11 +25,15 @@
    sudo screen /dev/ttyACM0 115200
    ```
    - Login: user `chip`, password `chip`
-   - Run WiFi setup:
+   - Setup WiFi:
    ```bash
-   wget https://raw.githubusercontent.com/asophila/Flash-CHIP/refs/heads/master/CHIP-updater/wifi-setup.sh
-   chmod +x wifi-setup.sh
-   sudo ./wifi-setup.sh
+   sudo nmcli device wifi connect <YOUR_SSID> password <YOUR_PASSWORD>
+   ```
+   ```bash
+   sudo nmcli c m <YOUR SSID> connection.autoconnect yes
+   ```
+   ```bash
+   ip addr | grep "inet " | awk 'NR==2{print $2}' | cut -d/ -f1 
    ```
    - Follow the prompts to enter your WiFi credentials
    - Write down the IP address displayed

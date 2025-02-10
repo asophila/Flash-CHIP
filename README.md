@@ -4,50 +4,34 @@ This guide is based on community contributions and testing, particularly from Re
 ## Instructions
 ### Part 1: Prepare your Linux machine
 1. Remove the C.H.I.P. from its case (in case you have a Pocket C.H.I.P.).
-2. On your Linux machine, install the required dependencies:
+2. Connect the FEL and a GROUND pin of the C.H.I.P. (for example, with a paperclip).
+3. Connect the C.H.I.P. its micro USB port to a USB port of your Linux machine. Make sure that the port and cable allow for plenty of power. If you get a FEL error, it may be because the C.H.I.P. is running under-voltage.
+4. On the Linux machine:
+    - run ` git clone https://github.com/asophila/Flash-CHIP.git` to clone this repository
+    - `cd Flash-CHIP` into the location where you stored this repository
+    - run `sudo chmod +x Flash.sh`
+    - run `./Flash.sh`
+    - Select the version you want to install
+    - Wait until the installation finishes
+    - All toghether:
     ```bash
-    sudo apt install u-boot-tools fastboot git build-essential curl libusb-1.0-0-dev pkg-config
-    ```
-3. Add your user to required groups:
-    ```bash
-    sudo usermod -a -G dialout,plugdev $USER
-    ```
-4. Add udev rules for the CHIP:
-    ```bash
-    sudo tee /etc/udev/rules.d/99-allwinner.rules <<EOF
-    SUBSYSTEM=="usb", ATTRS{idVendor}=="1f3a", ATTRS{idProduct}=="efe8", GROUP="plugdev", MODE="0660" SYMLINK+="usb-chip"
-    SUBSYSTEM=="usb", ATTRS{idVendor}=="18d1", ATTRS{idProduct}=="1010", GROUP="plugdev", MODE="0660" SYMLINK+="usb-chip-fastboot"
-    SUBSYSTEM=="usb", ATTRS{idVendor}=="1f3a", ATTRS{idProduct}=="1010", GROUP="plugdev", MODE="0660" SYMLINK+="usb-chip-fastboot"
-    SUBSYSTEM=="usb", ATTRS{idVendor}=="067b", ATTRS{idProduct}=="2303", GROUP="plugdev", MODE="0660" SYMLINK+="usb-serial-adapter"
-    EOF
-    ```
-5. Install the correct version of sunxi-tools:
-    ```bash
-    git clone https://github.com/linux-sunxi/sunxi-tools -b v1.4 && cd sunxi-tools
-    make && sudo make install-tools
-    ```
-6. Get the modified flashing tools:
-    ```bash
-    git clone https://github.com/Project-chip-crumbs/CHIP-tools && cd CHIP-tools
+    git clone https://github.com/asophila/Flash-CHIP.git
+    cd Flash-CHIP
+    sudo chmod +x Flash.sh
+    ./Flash.sh
     ```
 
-### Part 2: Flash and Connect
-1. Connect the FEL and a GROUND pin of the C.H.I.P. (for example, with a paperclip)
-2. Connect the C.H.I.P.'s micro USB port to your Linux machine. Make sure to use a good quality cable and power source
-3. Run the flash command:
-    ```bash
-    FEL='sudo sunxi-fel' FASTBOOT='sudo fastboot' SNIB=false ./chip-update-firmware.sh -s
-    ```
-4. After flashing completes:
+### Part 2: Connect
+1. After flashing completes:
     - Remove the FEL connection (paperclip)
     - Unplug for 3 seconds
     - Plug the C.H.I.P. back in
-5. Connect to the CHIP:
+2. Connect to the CHIP:
     ```bash
     screen /dev/ttyACM0 115200
     ```
-6. Login with user: `chip` and password: `chip`
-7. Set up WiFi:
+3. Login with user: `chip` and password: `chip`
+4. Set up WiFi:
     ```bash
     nmcli device wifi connect <YOUR_SSID> password <YOUR_PASSWORD>
     ```

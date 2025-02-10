@@ -28,7 +28,7 @@ This guide is based on community contributions and testing, particularly from Re
     ```
 6. Get the modified flashing tools:
     ```bash
-    git clone https://git.nytpu.com/forks/CHIP-tools/ && cd CHIP-tools
+    git clone https://github.com/Project-chip-crumbs/CHIP-tools && cd CHIP-tools
     ```
 
 ### Part 2: Flash and Connect

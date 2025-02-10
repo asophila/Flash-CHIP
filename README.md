@@ -27,7 +27,7 @@
    - Login: user `chip`, password `chip`
    - Run WiFi setup:
    ```bash
-   curl -s https://raw.githubusercontent.com/asophila/Flash-CHIP/master/CHIP-updater/wifi-setup.sh -o wifi-setup.sh
+   wget https://raw.githubusercontent.com/asophila/Flash-CHIP/refs/heads/master/CHIP-updater/wifi-setup.sh
    chmod +x wifi-setup.sh
    sudo ./wifi-setup.sh
    ```
@@ -43,7 +43,7 @@
 
 2. Run the upgrade script:
    ```bash
-   curl -s https://raw.githubusercontent.com/asophila/Flash-CHIP/master/CHIP-updater/upgrade-debian.sh -o upgrade-debian.sh
+   wget https://raw.githubusercontent.com/asophila/Flash-CHIP/refs/heads/master/CHIP-updater/upgrade-debian.sh
    chmod +x upgrade-debian.sh
    sudo ./upgrade-debian.sh
    ```

@@ -107,38 +107,26 @@ perform_upgrade() {
     # Update sources.list
     update_sources $version
     
-    # Update and upgrade
+    # Update and upgrade with force-yes
     apt update
-    apt install -y  --force-yes debian-keyring debian-archive-keyring
+    apt install -y --force-yes debian-keyring debian-archive-keyring
     apt update
-    apt install -y linux-image-armmp
+    apt install -y --force-yes linux-image-armmp
     apt full-upgrade -y --force-yes
-    apt autoremove -y
+    apt autoremove -y --force-yes
+    
+    # Version-specific tasks
+    if [ "$version" = "jessie" ]; then
+        apt install -y --force-yes locales
+        locale-gen en_US en_US.UTF-8
+        dpkg-reconfigure locales
+        dpkg-reconfigure tzdata
+    fi
     
     # Update X11 config if needed
     if [ "$version" = "stretch" ] || [ "$version" = "buster" ]; then
         update_x11_config $version
     fi
-    
-    # Version-specific tasks
-    case $version in
-        "jessie")
-            # Jessie-specific tasks
-            apt install -y locales
-            locale-gen en_US en_US.UTF-8
-            dpkg-reconfigure locales
-            dpkg-reconfigure tzdata
-            ;;
-        "bookworm")
-            # Final bookworm tasks
-            echo "Upgrade to Bookworm complete!"
-            echo "Would you like to install extra enhancements? (y/n)"
-            read -r install_extras
-            if [ "$install_extras" = "y" ]; then
-                install_extras
-            fi
-            ;;
-    esac
 }
 
 # Function to install extras

@@ -36,6 +36,14 @@ This guide is based on community contributions and testing, particularly from Re
     nmcli device wifi connect <YOUR_SSID> password <YOUR_PASSWORD>
     ```
 
+### Part 2.4: Install QoL enhancements
+1. Download and run enhancements. Define a unique and secret ntfy.sh channel to get your ip upon wifi connection.
+   ```bash
+   wget https://raw.githubusercontent.com/asophila/Flash-CHIP/refs/heads/master/CHIP-updater/install_extras.sh
+   sudo chmod +x install_extras.sh
+   sudo ./install_extras.sh
+   ```
+
 ### Part 3: Upgrade directly to Debian Bookworm
 1. Connect via SSH:
     ```bash

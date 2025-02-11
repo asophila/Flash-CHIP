@@ -14,7 +14,6 @@ get_debian_version() {
 get_best_mirror() {
     local version=$1
     
-    # Check if version is archived
     case $version in
         "jessie"|"stretch"|"buster")
             cat > /etc/apt/sources.list <<EOF
@@ -39,13 +38,11 @@ deb http://deb.debian.org/debian-security bookworm-security contrib main non-fre
 EOF
             ;;
         *)
-            # For future versions, use netselect
-            DEBIAN_FRONTEND=noninteractive apt-get install -y --force-yes netselect-apt || true
+            DEBIAN_FRONTEND=noninteractive apt-get install $APT_OPTIONS netselect-apt || true
             netselect-apt -n -a armhf $version
             if [ -f sources.list ]; then
                 mv sources.list /etc/apt/sources.list
             else
-                # Fallback to main mirror if netselect fails
                 cat > /etc/apt/sources.list <<EOF
 deb http://deb.debian.org/debian $version main contrib non-free
 deb http://security.debian.org/debian-security $version-security main contrib non-free
@@ -59,24 +56,27 @@ perform_upgrade() {
     local version=$1
     echo "Performing upgrade for $version..."
     
-    # By default, go to buster from any older version
     if [ "$version" = "jessie" ] || [ "$version" = "stretch" ]; then
         version="buster"
     fi
 
-    # Get best mirror for this version
+    # Set apt options based on version
+    if [ "$version" = "jessie" ] || [ "$version" = "stretch" ] || [ "$version" = "buster" ]; then
+        APT_OPTIONS="-y --force-yes"
+    else
+        APT_OPTIONS="-y --allow-downgrades --allow-remove-essential --allow-change-held-packages"
+    fi
+
     get_best_mirror $version
 
-    # Update package lists and perform upgrade
     DEBIAN_FRONTEND=noninteractive apt-get update
-    DEBIAN_FRONTEND=noninteractive apt-get install -y --force-yes debian-keyring debian-archive-keyring || true
+    DEBIAN_FRONTEND=noninteractive apt-get install $APT_OPTIONS debian-keyring debian-archive-keyring || true
     DEBIAN_FRONTEND=noninteractive apt-get update
-    DEBIAN_FRONTEND=noninteractive apt-get dist-upgrade -y --force-yes
-    DEBIAN_FRONTEND=noninteractive apt-get autoremove -y --force-yes
+    DEBIAN_FRONTEND=noninteractive apt-get dist-upgrade $APT_OPTIONS
+    DEBIAN_FRONTEND=noninteractive apt-get autoremove $APT_OPTIONS
 
-    # Version-specific tasks
     if [ "$version" = "jessie" ] || [ "$version" = "stretch" ]; then
-        DEBIAN_FRONTEND=noninteractive apt-get install -y --force-yes locales || true
+        DEBIAN_FRONTEND=noninteractive apt-get install $APT_OPTIONS locales || true
         if command -v locale-gen >/dev/null 2>&1; then
             locale-gen en_US en_US.UTF-8
             dpkg-reconfigure locales
@@ -86,16 +86,13 @@ perform_upgrade() {
 }
 
 install_extras() {
+    APT_OPTIONS="-y --allow-downgrades --allow-remove-essential --allow-change-held-packages"
     echo "Installing quality of life improvements..."
     
-    # Get actual user
     ACTUAL_USER=$(logname || echo $SUDO_USER)
-    
-    # Install neofetch
-    DEBIAN_FRONTEND=noninteractive apt-get install -y neofetch
+    DEBIAN_FRONTEND=noninteractive apt-get install $APT_OPTIONS neofetch
     echo "neofetch" >> /home/$ACTUAL_USER/.bashrc
     
-    # Setup startup script
     cat > /home/$ACTUAL_USER/startup.sh <<EOF
 #!/bin/bash
 IP=\$(ip addr | grep "inet " | awk 'NR==2{print \$2}' | cut -d/ -f1)
@@ -104,25 +101,21 @@ EOF
     
     chmod +x /home/$ACTUAL_USER/startup.sh
     chown $ACTUAL_USER:$ACTUAL_USER /home/$ACTUAL_USER/startup.sh
-    
-    # Modify rc.local
     sed -i "\$i sh /home/$ACTUAL_USER/startup.sh\n" /etc/rc.local
     chmod +x /etc/rc.local
     
-    # Get ntfy.sh channel name
     echo -n "Insert a name for the ntfy.sh channel (default: secret_ip): "
     read NTFY_CHANNEL
     NTFY_CHANNEL=${NTFY_CHANNEL:-secret_ip}
     sed -i "s/\$NTFY_CHANNEL/$NTFY_CHANNEL/g" /home/$ACTUAL_USER/startup.sh
     
-    # Set hostname
     echo -n "Insert a name for this host (default: chip): "
     read HOSTNAME
     HOSTNAME=${HOSTNAME:-chip}
     hostnamectl set-hostname $HOSTNAME
 }
 
-# Main script
+# Main script starts here
 check_root
 
 current_version=$(get_debian_version)

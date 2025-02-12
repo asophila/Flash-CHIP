@@ -9,83 +9,23 @@ check_root() {
 
 fix_extended_states() {
     local extended_states="/var/lib/apt/extended_states"
-    echo "Performing complete package management system reset..."
+    echo "Fixing extended states using apt-mark..."
     
-    # Stop package management services
-    echo "Stopping package management services..."
-    systemctl stop apt-daily.timer apt-daily-upgrade.timer >/dev/null 2>&1 || true
-    systemctl stop unattended-upgrades >/dev/null 2>&1 || true
-    
-    # Kill any running package management processes
-    echo "Ensuring no package managers are running..."
-    killall apt apt-get dpkg >/dev/null 2>&1 || true
-    
-    # Remove all locks and potentially problematic files
-    echo "Removing package management locks and state files..."
-    rm -f /var/lib/apt/lists/lock
-    rm -f /var/cache/apt/archives/lock
-    rm -f /var/lib/dpkg/lock*
-    rm -f /var/lib/apt/lists/*
-    rm -f /var/cache/apt/archives/partial/*
-    
-    # Backup and remove all potentially problematic state files
-    echo "Backing up and resetting package management state..."
-    local timestamp=$(date +%Y%m%d_%H%M%S)
-    local backup_dir="/var/backups/apt_backup_${timestamp}"
-    mkdir -p "$backup_dir"
-    
-    # Backup key files
-    cp -a /var/lib/apt/extended_states "$backup_dir/" 2>/dev/null || true
-    cp -a /var/lib/dpkg/status "$backup_dir/" 2>/dev/null || true
-    cp -a /var/lib/dpkg/available "$backup_dir/" 2>/dev/null || true
-    
-    # Remove and recreate extended_states
-    echo "Recreating extended_states file..."
-    rm -f "$extended_states"
-    echo "" > "$extended_states"
-    chmod 644 "$extended_states"
-    chown root:root "$extended_states"
-    
-    # Regenerate dpkg available file
-    echo "Regenerating dpkg available file..."
-    dpkg --clear-avail
-    dpkg --update-avail /var/lib/dpkg/available
-    
-    # Reset the dpkg status file if it's corrupted
-    if ! dpkg --audit >/dev/null 2>&1; then
-        echo "WARNING: dpkg status file may be corrupted, attempting repair..."
-        cp "$backup_dir/status" /var/lib/dpkg/status-old 2>/dev/null || true
-        # Create minimal working status file
-        cat > /var/lib/dpkg/status <<EOF
-Package: dpkg
-Status: install ok installed
-Priority: required
-Section: admin
-Installed-Size: 0
-Version: 1.0
-Architecture: all
-
-EOF
+    # Backup old extended_states if it exists
+    if [ -f "$extended_states" ]; then
+        mv "$extended_states" "${extended_states}.bak"
     fi
+
+    # Get list of all packages
+    packages=$(dpkg -l | grep '^ii' | awk '{print $2}')
     
-    # Clean and recreate apt directories
-    echo "Resetting apt directories..."
-    rm -rf /var/lib/apt/lists/*
-    mkdir -p /var/lib/apt/lists/partial
-    rm -rf /var/cache/apt/archives/*
-    mkdir -p /var/cache/apt/archives/partial
+    # Mark all existing packages as manually installed first
+    echo "$packages" | xargs apt-mark manual >/dev/null 2>&1
     
-    # Reconfigure dpkg
-    echo "Reconfiguring package system..."
-    dpkg --configure -a || true
+    # Then mark dependencies as auto
+    apt-mark auto $(apt-mark showauto) >/dev/null 2>&1
     
-    # Reset apt
-    echo "Resetting apt..."
-    apt-get clean
-    apt-get update --fix-missing || true
-    
-    echo "Package management system has been completely reset."
-    echo "Original files backed up to: $backup_dir"
+    echo "Package auto/manual states have been reconstructed."
 }
 
 get_debian_version() {
@@ -175,6 +115,42 @@ perform_upgrade() {
         echo "ERROR: Operation '$operation' failed after $max_attempts attempts"
         return 1
     }
+    
+    # Prepare system for upgrade
+    echo "Preparing for upgrade..."
+    handle_apt_operation "apt-get clean"
+    
+    # Update package lists with retries
+    echo "Updating package lists..."
+    if ! handle_apt_operation "apt-get update --fix-missing"; then
+        echo "ERROR: Unable to update package lists after multiple attempts"
+        exit 1
+    fi
+    
+    # Install new keyrings first
+    DEBIAN_FRONTEND=noninteractive apt-get install $APT_OPTIONS debian-keyring debian-archive-keyring || true
+    
+    # Update again after installing new keyrings
+    DEBIAN_FRONTEND=noninteractive apt-get update
+    
+    # Perform the actual upgrade
+    DEBIAN_FRONTEND=noninteractive apt-get dist-upgrade $APT_OPTIONS || {
+        echo "dist-upgrade failed. Attempting to fix and retry..."
+        dpkg --configure -a
+        DEBIAN_FRONTEND=noninteractive apt-get dist-upgrade $APT_OPTIONS --fix-broken
+    }
+    
+    DEBIAN_FRONTEND=noninteractive apt-get autoremove $APT_OPTIONS
+
+    if [ "$version" = "jessie" ] || [ "$version" = "stretch" ]; then
+        DEBIAN_FRONTEND=noninteractive apt-get install $APT_OPTIONS locales || true
+        if command -v locale-gen >/dev/null 2>&1; then
+            locale-gen en_US en_US.UTF-8
+            dpkg-reconfigure locales
+            dpkg-reconfigure tzdata
+        fi
+    fi
+}
     
     # Prepare system for upgrade
     echo "Preparing for upgrade..."

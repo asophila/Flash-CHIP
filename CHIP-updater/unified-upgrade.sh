@@ -93,16 +93,71 @@ install_extras() {
     DEBIAN_FRONTEND=noninteractive apt-get install $APT_OPTIONS neofetch
     echo "neofetch" >> /home/$ACTUAL_USER/.bashrc
     
+    # Create startup script with proper permissions
     cat > /home/$ACTUAL_USER/startup.sh <<EOF
 #!/bin/bash
+
+# Wait for network to be fully up
+for i in {1..30}; do
+    if ping -c 1 8.8.8.8 >/dev/null 2>&1; then
+        break
+    fi
+    sleep 2
+done
+
+# Get IP and ensure we have one
 IP=\$(ip addr | grep "inet " | awk 'NR==2{print \$2}' | cut -d/ -f1)
-curl -d "CHIP IP: \$IP" ntfy.sh/\$NTFY_CHANNEL
+if [ -z "\$IP" ]; then
+    echo "No IP address found" >&2
+    exit 1
+fi
+
+HOSTNAME=\$(hostname)
+
+# Try multiple times to send notification
+for i in {1..3}; do
+    if /usr/bin/curl -H "Content-Type: text/plain" --connect-timeout 10 -m 20 --data-raw "CHIP \$HOSTNAME online: \$IP" ntfy.sh/\$NTFY_CHANNEL; then
+        exit 0
+    fi
+    sleep 5
+done
+
+exit 1
 EOF
     
+    # Set proper permissions immediately after creation
     chmod +x /home/$ACTUAL_USER/startup.sh
     chown $ACTUAL_USER:$ACTUAL_USER /home/$ACTUAL_USER/startup.sh
-    sed -i "\$i sh /home/$ACTUAL_USER/startup.sh\n" /etc/rc.local
-    chmod +x /etc/rc.local
+    
+    # Ensure curl is installed
+    DEBIAN_FRONTEND=noninteractive apt-get install $APT_OPTIONS curl
+
+    # Create and configure systemd service for startup script
+    cat > /etc/systemd/system/chip-startup.service <<EOF
+[Unit]
+Description=CHIP Startup Service
+After=network-online.target NetworkManager-wait-online.service
+Wants=network-online.target NetworkManager-wait-online.service
+StartLimitIntervalSec=0
+
+[Service]
+Type=oneshot
+User=$ACTUAL_USER
+Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+ExecStartPre=/bin/sleep 45
+ExecStart=/bin/bash /home/$ACTUAL_USER/startup.sh
+RemainAfterExit=yes
+Restart=on-failure
+RestartSec=30
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+    # Enable and start the service
+    systemctl daemon-reload
+    systemctl enable chip-startup.service
+    systemctl start chip-startup.service
     
     echo -n "Insert a name for the ntfy.sh channel (default: secret_ip): "
     read NTFY_CHANNEL
@@ -112,7 +167,16 @@ EOF
     echo -n "Insert a name for this host (default: chip): "
     read HOSTNAME
     HOSTNAME=${HOSTNAME:-chip}
-    hostnamectl set-hostname $HOSTNAME
+    
+    # Set hostname properly using both methods for compatibility
+    echo "$HOSTNAME" > /etc/hostname
+    hostname "$HOSTNAME"
+    # Update /etc/hosts file
+    sed -i "s/127.0.1.1.*/127.0.1.1\t$HOSTNAME/g" /etc/hosts
+    # Use hostnamectl if available
+    if command -v hostnamectl >/dev/null 2>&1; then
+        hostnamectl set-hostname "$HOSTNAME"
+    fi
 }
 
 # Main script starts here

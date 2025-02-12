@@ -9,34 +9,37 @@ check_root() {
 
 fix_extended_states() {
     local extended_states="/var/lib/apt/extended_states"
-    echo "Checking extended_states file..."
+    echo "Fixing package management state..."
     
+    # Backup extended_states if it exists
     if [ -f "$extended_states" ]; then
-        # Backup the original file
-        cp "$extended_states" "${extended_states}.backup"
-        
-        # Try to parse the file
-        if ! dpkg --audit > /dev/null 2>&1; then
-            echo "Extended states file appears corrupted. Attempting to fix..."
-            
-            # Remove the corrupted file and create a new empty one
-            rm -f "$extended_states"
-            touch "$extended_states"
-            
-            # Run dpkg --configure -a to ensure package database is in a consistent state
-            dpkg --configure -a
-            
-            # Force regenerate the extended_states file
-            apt-get update --fix-missing
-            
-            echo "Extended states file has been reset."
-        else
-            echo "Extended states file appears valid."
-        fi
-    else
-        echo "Extended states file missing. Creating new one..."
-        touch "$extended_states"
+        echo "Backing up extended_states file..."
+        cp "$extended_states" "${extended_states}.backup-$(date +%s)"
     fi
+    
+    # Force removal and recreation of extended_states
+    echo "Recreating extended_states file..."
+    rm -f "$extended_states"
+    echo "" > "$extended_states"
+    chmod 644 "$extended_states"
+    
+    # Clean up apt and dpkg state
+    echo "Cleaning package management state..."
+    rm -f /var/lib/apt/lists/lock
+    rm -f /var/cache/apt/archives/lock
+    rm -f /var/lib/dpkg/lock*
+    
+    # Ensure dpkg is in a consistent state
+    echo "Reconfiguring packages..."
+    dpkg --configure -a
+    
+    # Clean apt completely
+    echo "Cleaning apt caches..."
+    apt-get clean
+    rm -rf /var/lib/apt/lists/*
+    mkdir -p /var/lib/apt/lists/partial
+    
+    echo "Extended states file has been reset and package management system cleaned."
 }
 
 get_debian_version() {
@@ -103,14 +106,23 @@ perform_upgrade() {
     # Ensure package management system is in a consistent state
     dpkg --configure -a
     
-    # Clean apt lists and regenerate
-    rm -rf /var/lib/apt/lists/*
-    
+    # Ensure clean state before proceeding
+    echo "Preparing for upgrade..."
     DEBIAN_FRONTEND=noninteractive apt-get clean
-    DEBIAN_FRONTEND=noninteractive apt-get update || {
-        echo "Failed to update package lists. Retrying with --fix-missing..."
-        DEBIAN_FRONTEND=noninteractive apt-get update --fix-missing
-    }
+    
+    # Try to update, with multiple fallback options
+    echo "Updating package lists..."
+    if ! DEBIAN_FRONTEND=noninteractive apt-get update; then
+        echo "Initial update failed, trying with --fix-missing..."
+        if ! DEBIAN_FRONTEND=noninteractive apt-get update --fix-missing; then
+            echo "Update still failed, trying one more time after sleeping..."
+            sleep 5
+            if ! DEBIAN_FRONTEND=noninteractive apt-get update --fix-missing; then
+                echo "ERROR: Unable to update package lists after multiple attempts"
+                exit 1
+            fi
+        fi
+    fi
     
     # Install new keyrings first
     DEBIAN_FRONTEND=noninteractive apt-get install $APT_OPTIONS debian-keyring debian-archive-keyring || true

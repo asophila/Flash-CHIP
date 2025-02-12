@@ -92,76 +92,42 @@ perform_upgrade() {
     # Ensure package management system is in a consistent state
     dpkg --configure -a
     
-    # Function to handle package management operations with retries
-    handle_apt_operation() {
-        local operation="$1"
-        local max_attempts=3
-        local attempt=1
-        local wait_time=5
-        
-        while [ $attempt -le $max_attempts ]; do
-            echo "Attempting $operation (try $attempt of $max_attempts)..."
-            if DEBIAN_FRONTEND=noninteractive $operation; then
-                return 0
-            fi
-            
-            echo "Operation failed, cleaning up and retrying in $wait_time seconds..."
-            fix_extended_states
-            sleep $wait_time
-            wait_time=$((wait_time * 2))
-            attempt=$((attempt + 1))
-        done
-        
-        echo "ERROR: Operation '$operation' failed after $max_attempts attempts"
-        return 1
-    }
-    
+    # Fix extended states before proceeding
+    fix_extended_states
+
+    get_best_mirror $version
+
     # Prepare system for upgrade
     echo "Preparing for upgrade..."
-    handle_apt_operation "apt-get clean"
+    DEBIAN_FRONTEND=noninteractive apt-get clean
     
-    # Update package lists with retries
+    # Update package lists
     echo "Updating package lists..."
-    if ! handle_apt_operation "apt-get update --fix-missing"; then
-        echo "ERROR: Unable to update package lists after multiple attempts"
-        exit 1
+    if ! DEBIAN_FRONTEND=noninteractive apt-get update --fix-missing; then
+        echo "Initial update failed, retrying after a short delay..."
+        sleep 5
+        if ! DEBIAN_FRONTEND=noninteractive apt-get update --fix-missing; then
+            echo "ERROR: Unable to update package lists"
+            exit 1
+        fi
     fi
     
     # Install new keyrings first
+    echo "Installing package keyrings..."
     DEBIAN_FRONTEND=noninteractive apt-get install $APT_OPTIONS debian-keyring debian-archive-keyring || true
     
     # Update again after installing new keyrings
     DEBIAN_FRONTEND=noninteractive apt-get update
     
     # Perform the actual upgrade
-    DEBIAN_FRONTEND=noninteractive apt-get dist-upgrade $APT_OPTIONS || {
-        echo "dist-upgrade failed. Attempting to fix and retry..."
+    echo "Performing dist-upgrade..."
+    if ! DEBIAN_FRONTEND=noninteractive apt-get dist-upgrade $APT_OPTIONS; then
+        echo "dist-upgrade failed, attempting to fix and retry..."
         dpkg --configure -a
         DEBIAN_FRONTEND=noninteractive apt-get dist-upgrade $APT_OPTIONS --fix-broken
-    }
+    fi
     
     DEBIAN_FRONTEND=noninteractive apt-get autoremove $APT_OPTIONS
-
-    if [ "$version" = "jessie" ] || [ "$version" = "stretch" ]; then
-        DEBIAN_FRONTEND=noninteractive apt-get install $APT_OPTIONS locales || true
-        if command -v locale-gen >/dev/null 2>&1; then
-            locale-gen en_US en_US.UTF-8
-            dpkg-reconfigure locales
-            dpkg-reconfigure tzdata
-        fi
-    fi
-}
-    
-    # Prepare system for upgrade
-    echo "Preparing for upgrade..."
-    handle_apt_operation "apt-get clean"
-    
-    # Update package lists with retries
-    echo "Updating package lists..."
-    if ! handle_apt_operation "apt-get update --fix-missing"; then
-        echo "ERROR: Unable to update package lists after multiple attempts"
-        exit 1
-    fi
     
     # Install new keyrings first
     DEBIAN_FRONTEND=noninteractive apt-get install $APT_OPTIONS debian-keyring debian-archive-keyring || true

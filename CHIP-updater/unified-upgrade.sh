@@ -90,7 +90,39 @@ install_extras() {
     echo "Installing quality of life improvements..."
     
     ACTUAL_USER=$(logname || echo $SUDO_USER)
+    
+    # Install neofetch and basic packages
     DEBIAN_FRONTEND=noninteractive apt-get install $APT_OPTIONS neofetch
+    
+    # Add backports repository for newer Go version
+    if ! grep -q "bookworm-backports" /etc/apt/sources.list; then
+        echo "deb http://deb.debian.org/debian bookworm-backports main" >> /etc/apt/sources.list
+    fi
+    apt-get update
+
+    # Install wireguard tools and dependencies
+    DEBIAN_FRONTEND=noninteractive apt-get install $APT_OPTIONS \
+        wireguard-tools \
+        git \
+        make \
+        build-essential \
+        openresolv
+
+    # Install Go from backports
+    DEBIAN_FRONTEND=noninteractive apt-get install -t bookworm-backports $APT_OPTIONS golang
+
+    # Build and install wireguard-go from source
+    echo "Building wireguard-go from source..."
+    cd /tmp
+    rm -rf wireguard-go
+    git clone https://git.zx2c4.com/wireguard-go
+    cd wireguard-go
+    GOPROXY=direct make
+    make install
+
+    # Clean up build directory
+    cd /
+    rm -rf /tmp/wireguard-go
     echo "neofetch" >> /home/$ACTUAL_USER/.bashrc
     
     # Create startup script with proper permissions

@@ -7,6 +7,38 @@ check_root() {
     fi
 }
 
+fix_extended_states() {
+    local extended_states="/var/lib/apt/extended_states"
+    echo "Checking extended_states file..."
+    
+    if [ -f "$extended_states" ]; then
+        # Backup the original file
+        cp "$extended_states" "${extended_states}.backup"
+        
+        # Try to parse the file
+        if ! dpkg --audit > /dev/null 2>&1; then
+            echo "Extended states file appears corrupted. Attempting to fix..."
+            
+            # Remove the corrupted file and create a new empty one
+            rm -f "$extended_states"
+            touch "$extended_states"
+            
+            # Run dpkg --configure -a to ensure package database is in a consistent state
+            dpkg --configure -a
+            
+            # Force regenerate the extended_states file
+            apt-get update --fix-missing
+            
+            echo "Extended states file has been reset."
+        else
+            echo "Extended states file appears valid."
+        fi
+    else
+        echo "Extended states file missing. Creating new one..."
+        touch "$extended_states"
+    fi
+}
+
 get_debian_version() {
     grep -o "jessie\|stretch\|buster\|bullseye\|bookworm" /etc/os-release | head -n1 || echo "unknown"
 }
@@ -60,19 +92,39 @@ perform_upgrade() {
         version="buster"
     fi
 
-    # Set apt options based on version
-    if [ "$version" = "jessie" ] || [ "$version" = "stretch" ] || [ "$version" = "buster" ]; then
-        APT_OPTIONS="-y --force-yes"
-    else
-        APT_OPTIONS="-y --allow-downgrades --allow-remove-essential --allow-change-held-packages"
-    fi
+    # Set apt options
+    APT_OPTIONS="-y --allow-downgrades --allow-remove-essential --allow-change-held-packages"
+
+    # Fix extended states before proceeding with upgrade
+    fix_extended_states
 
     get_best_mirror $version
 
-    DEBIAN_FRONTEND=noninteractive apt-get update
+    # Ensure package management system is in a consistent state
+    dpkg --configure -a
+    
+    # Clean apt lists and regenerate
+    rm -rf /var/lib/apt/lists/*
+    
+    DEBIAN_FRONTEND=noninteractive apt-get clean
+    DEBIAN_FRONTEND=noninteractive apt-get update || {
+        echo "Failed to update package lists. Retrying with --fix-missing..."
+        DEBIAN_FRONTEND=noninteractive apt-get update --fix-missing
+    }
+    
+    # Install new keyrings first
     DEBIAN_FRONTEND=noninteractive apt-get install $APT_OPTIONS debian-keyring debian-archive-keyring || true
+    
+    # Update again after installing new keyrings
     DEBIAN_FRONTEND=noninteractive apt-get update
-    DEBIAN_FRONTEND=noninteractive apt-get dist-upgrade $APT_OPTIONS
+    
+    # Perform the actual upgrade
+    DEBIAN_FRONTEND=noninteractive apt-get dist-upgrade $APT_OPTIONS || {
+        echo "dist-upgrade failed. Attempting to fix and retry..."
+        dpkg --configure -a
+        DEBIAN_FRONTEND=noninteractive apt-get dist-upgrade $APT_OPTIONS --fix-broken
+    }
+    
     DEBIAN_FRONTEND=noninteractive apt-get autoremove $APT_OPTIONS
 
     if [ "$version" = "jessie" ] || [ "$version" = "stretch" ]; then

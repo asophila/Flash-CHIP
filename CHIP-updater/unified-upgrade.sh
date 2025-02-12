@@ -94,6 +94,21 @@ install_extras() {
     # Install neofetch and basic packages
     DEBIAN_FRONTEND=noninteractive apt-get install $APT_OPTIONS neofetch
     
+    # Configure neofetch to run at login for interactive sessions
+    if ! grep -q "if \[ -n \"\$PS1\" \]; then neofetch; fi" "/home/$ACTUAL_USER/.profile"; then
+        echo '# Run neofetch for interactive sessions' >> "/home/$ACTUAL_USER/.profile"
+        echo 'if [ -n "$PS1" ]; then neofetch; fi' >> "/home/$ACTUAL_USER/.profile"
+    fi
+    
+    if ! grep -q "if \[ -n \"\$PS1\" \]; then neofetch; fi" "/home/$ACTUAL_USER/.bashrc"; then
+        echo '# Run neofetch for interactive sessions' >> "/home/$ACTUAL_USER/.bashrc"
+        echo 'if [ -n "$PS1" ]; then neofetch; fi' >> "/home/$ACTUAL_USER/.bashrc"
+    fi
+    
+    # Ensure proper ownership of dotfiles
+    chown $ACTUAL_USER:$ACTUAL_USER "/home/$ACTUAL_USER/.profile"
+    chown $ACTUAL_USER:$ACTUAL_USER "/home/$ACTUAL_USER/.bashrc"
+    
     # Add backports repository for newer Go version
     if ! grep -q "bookworm-backports" /etc/apt/sources.list; then
         echo "deb http://deb.debian.org/debian bookworm-backports main" >> /etc/apt/sources.list

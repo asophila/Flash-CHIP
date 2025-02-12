@@ -9,37 +9,83 @@ check_root() {
 
 fix_extended_states() {
     local extended_states="/var/lib/apt/extended_states"
-    echo "Fixing package management state..."
+    echo "Performing complete package management system reset..."
     
-    # Backup extended_states if it exists
-    if [ -f "$extended_states" ]; then
-        echo "Backing up extended_states file..."
-        cp "$extended_states" "${extended_states}.backup-$(date +%s)"
-    fi
+    # Stop package management services
+    echo "Stopping package management services..."
+    systemctl stop apt-daily.timer apt-daily-upgrade.timer >/dev/null 2>&1 || true
+    systemctl stop unattended-upgrades >/dev/null 2>&1 || true
     
-    # Force removal and recreation of extended_states
+    # Kill any running package management processes
+    echo "Ensuring no package managers are running..."
+    killall apt apt-get dpkg >/dev/null 2>&1 || true
+    
+    # Remove all locks and potentially problematic files
+    echo "Removing package management locks and state files..."
+    rm -f /var/lib/apt/lists/lock
+    rm -f /var/cache/apt/archives/lock
+    rm -f /var/lib/dpkg/lock*
+    rm -f /var/lib/apt/lists/*
+    rm -f /var/cache/apt/archives/partial/*
+    
+    # Backup and remove all potentially problematic state files
+    echo "Backing up and resetting package management state..."
+    local timestamp=$(date +%Y%m%d_%H%M%S)
+    local backup_dir="/var/backups/apt_backup_${timestamp}"
+    mkdir -p "$backup_dir"
+    
+    # Backup key files
+    cp -a /var/lib/apt/extended_states "$backup_dir/" 2>/dev/null || true
+    cp -a /var/lib/dpkg/status "$backup_dir/" 2>/dev/null || true
+    cp -a /var/lib/dpkg/available "$backup_dir/" 2>/dev/null || true
+    
+    # Remove and recreate extended_states
     echo "Recreating extended_states file..."
     rm -f "$extended_states"
     echo "" > "$extended_states"
     chmod 644 "$extended_states"
+    chown root:root "$extended_states"
     
-    # Clean up apt and dpkg state
-    echo "Cleaning package management state..."
-    rm -f /var/lib/apt/lists/lock
-    rm -f /var/cache/apt/archives/lock
-    rm -f /var/lib/dpkg/lock*
+    # Regenerate dpkg available file
+    echo "Regenerating dpkg available file..."
+    dpkg --clear-avail
+    dpkg --update-avail /var/lib/dpkg/available
     
-    # Ensure dpkg is in a consistent state
-    echo "Reconfiguring packages..."
-    dpkg --configure -a
+    # Reset the dpkg status file if it's corrupted
+    if ! dpkg --audit >/dev/null 2>&1; then
+        echo "WARNING: dpkg status file may be corrupted, attempting repair..."
+        cp "$backup_dir/status" /var/lib/dpkg/status-old 2>/dev/null || true
+        # Create minimal working status file
+        cat > /var/lib/dpkg/status <<EOF
+Package: dpkg
+Status: install ok installed
+Priority: required
+Section: admin
+Installed-Size: 0
+Version: 1.0
+Architecture: all
+
+EOF
+    fi
     
-    # Clean apt completely
-    echo "Cleaning apt caches..."
-    apt-get clean
+    # Clean and recreate apt directories
+    echo "Resetting apt directories..."
     rm -rf /var/lib/apt/lists/*
     mkdir -p /var/lib/apt/lists/partial
+    rm -rf /var/cache/apt/archives/*
+    mkdir -p /var/cache/apt/archives/partial
     
-    echo "Extended states file has been reset and package management system cleaned."
+    # Reconfigure dpkg
+    echo "Reconfiguring package system..."
+    dpkg --configure -a || true
+    
+    # Reset apt
+    echo "Resetting apt..."
+    apt-get clean
+    apt-get update --fix-missing || true
+    
+    echo "Package management system has been completely reset."
+    echo "Original files backed up to: $backup_dir"
 }
 
 get_debian_version() {
@@ -106,22 +152,39 @@ perform_upgrade() {
     # Ensure package management system is in a consistent state
     dpkg --configure -a
     
-    # Ensure clean state before proceeding
-    echo "Preparing for upgrade..."
-    DEBIAN_FRONTEND=noninteractive apt-get clean
-    
-    # Try to update, with multiple fallback options
-    echo "Updating package lists..."
-    if ! DEBIAN_FRONTEND=noninteractive apt-get update; then
-        echo "Initial update failed, trying with --fix-missing..."
-        if ! DEBIAN_FRONTEND=noninteractive apt-get update --fix-missing; then
-            echo "Update still failed, trying one more time after sleeping..."
-            sleep 5
-            if ! DEBIAN_FRONTEND=noninteractive apt-get update --fix-missing; then
-                echo "ERROR: Unable to update package lists after multiple attempts"
-                exit 1
+    # Function to handle package management operations with retries
+    handle_apt_operation() {
+        local operation="$1"
+        local max_attempts=3
+        local attempt=1
+        local wait_time=5
+        
+        while [ $attempt -le $max_attempts ]; do
+            echo "Attempting $operation (try $attempt of $max_attempts)..."
+            if DEBIAN_FRONTEND=noninteractive $operation; then
+                return 0
             fi
-        fi
+            
+            echo "Operation failed, cleaning up and retrying in $wait_time seconds..."
+            fix_extended_states
+            sleep $wait_time
+            wait_time=$((wait_time * 2))
+            attempt=$((attempt + 1))
+        done
+        
+        echo "ERROR: Operation '$operation' failed after $max_attempts attempts"
+        return 1
+    }
+    
+    # Prepare system for upgrade
+    echo "Preparing for upgrade..."
+    handle_apt_operation "apt-get clean"
+    
+    # Update package lists with retries
+    echo "Updating package lists..."
+    if ! handle_apt_operation "apt-get update --fix-missing"; then
+        echo "ERROR: Unable to update package lists after multiple attempts"
+        exit 1
     fi
     
     # Install new keyrings first

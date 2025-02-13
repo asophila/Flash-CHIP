@@ -140,12 +140,7 @@ install_extras() {
     # Install neofetch and basic packages
     DEBIAN_FRONTEND=noninteractive apt-get install $APT_OPTIONS neofetch
     
-    # Configure neofetch to run at login for interactive sessions
-    if ! grep -q "if \[ -n \"\$PS1\" \]; then neofetch; fi" "/home/$ACTUAL_USER/.profile"; then
-        echo '# Run neofetch for interactive sessions' >> "/home/$ACTUAL_USER/.profile"
-        echo 'if [ -n "$PS1" ]; then neofetch; fi' >> "/home/$ACTUAL_USER/.profile"
-    fi
-    
+    # Configure neofetch to run at login for interactive sessions (only in .bashrc)
     if ! grep -q "if \[ -n \"\$PS1\" \]; then neofetch; fi" "/home/$ACTUAL_USER/.bashrc"; then
         echo '# Run neofetch for interactive sessions' >> "/home/$ACTUAL_USER/.bashrc"
         echo 'if [ -n "$PS1" ]; then neofetch; fi' >> "/home/$ACTUAL_USER/.bashrc"

@@ -46,6 +46,12 @@ update_apt_sources() {
     rm -f /etc/apt/sources.list.d/*.list
     
     case $target in
+        "buster")
+            cat > /etc/apt/sources.list <<EOF
+deb [check-valid-until=no] http://archive.debian.org/debian buster main contrib non-free
+deb [check-valid-until=no] http://archive.debian.org/debian-security buster/updates main contrib non-free
+EOF
+            ;;
         "bullseye")
             cat > /etc/apt/sources.list <<EOF
 deb http://deb.debian.org/debian bullseye main contrib non-free
@@ -82,7 +88,9 @@ perform_upgrade() {
     
     # Determine target version
     local target_version
-    if [ "$version" = "buster" ]; then
+    if [ "$version" = "jessie" ]; then
+        target_version="buster"
+    elif [ "$version" = "buster" ]; then
         target_version="bullseye"
     elif [ "$version" = "bullseye" ]; then
         target_version="bookworm"
@@ -283,6 +291,15 @@ current_version=$(get_debian_version)
 echo "Current Debian version: $current_version"
 
 case $current_version in
+    "jessie")
+        echo "Starting upgrade path: jessie -> buster -> bullseye -> bookworm"
+        # Add jessie-specific sources first
+        cat > /etc/apt/sources.list <<EOF
+deb [check-valid-until=no] http://archive.debian.org/debian/ jessie main contrib non-free
+deb-src [check-valid-until=no] http://archive.debian.org/debian/ jessie main contrib non-free
+EOF
+        perform_upgrade "jessie"
+        ;;
     "buster")
         echo "Starting upgrade path: buster -> bullseye -> bookworm"
         perform_upgrade "buster"

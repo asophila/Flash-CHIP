@@ -32,62 +32,67 @@ get_debian_version() {
     grep -o "jessie\|stretch\|buster\|bullseye\|bookworm" /etc/os-release | head -n1 || echo "unknown"
 }
 
-get_best_mirror() {
+update_apt_sources() {
     local version=$1
+    local target=$2
+    echo "Updating APT sources from $version to $target..."
     
-    case $version in
-        "jessie"|"stretch"|"buster")
-            cat > /etc/apt/sources.list <<EOF
-deb [check-valid-until=no] http://archive.debian.org/debian/ $version main contrib non-free
-deb-src [check-valid-until=no] http://archive.debian.org/debian/ $version main contrib non-free
-EOF
-            ;;
+    # Backup current sources
+    if [ -f "/etc/apt/sources.list" ]; then
+        cp /etc/apt/sources.list "/etc/apt/sources.list.${version}.backup"
+    fi
+    
+    # Clear out all old source lists
+    rm -f /etc/apt/sources.list.d/*.list
+    
+    case $target in
         "bullseye")
             cat > /etc/apt/sources.list <<EOF
 deb http://deb.debian.org/debian bullseye main contrib non-free
+deb http://security.debian.org/debian-security bullseye-security main contrib non-free
 deb http://deb.debian.org/debian bullseye-updates main contrib non-free
-deb http://deb.debian.org/debian bullseye-backports main contrib non-free
-deb http://security.debian.org/debian-security/ bullseye-security main contrib non-free
 EOF
             ;;
         "bookworm")
             cat > /etc/apt/sources.list <<EOF
-deb http://deb.debian.org/debian bookworm contrib main non-free-firmware
-deb http://deb.debian.org/debian bookworm-updates contrib main non-free-firmware
-deb http://deb.debian.org/debian bookworm-backports contrib main non-free-firmware
-deb http://deb.debian.org/debian-security bookworm-security contrib main non-free-firmware
+deb http://deb.debian.org/debian bookworm main contrib non-free-firmware
+deb http://security.debian.org/debian-security bookworm-security main contrib non-free-firmware
+deb http://deb.debian.org/debian bookworm-updates main contrib non-free-firmware
 EOF
             ;;
         *)
-            DEBIAN_FRONTEND=noninteractive apt-get install $APT_OPTIONS netselect-apt || true
-            netselect-apt -n -a armhf $version
-            if [ -f sources.list ]; then
-                mv sources.list /etc/apt/sources.list
-            else
-                cat > /etc/apt/sources.list <<EOF
-deb http://deb.debian.org/debian $version main contrib non-free
-deb http://security.debian.org/debian-security $version-security main contrib non-free
-EOF
-            fi
+            echo "Error: Unsupported target version $target"
+            exit 1
             ;;
     esac
+    
+    # Replace occurrences in any remaining files
+    find /etc/apt -type f -name "*.list" -exec sed -i "s/$version/$target/g" {} +
 }
 
 perform_upgrade() {
     local version=$1
     echo "Performing upgrade for $version..."
     
-    if [ "$version" = "jessie" ] || [ "$version" = "stretch" ]; then
-        version="buster"
-    fi
-
     # Set apt options
     APT_OPTIONS="-y --allow-downgrades --allow-remove-essential --allow-change-held-packages"
 
     # Fix extended states before proceeding
     fix_extended_states
-
-    get_best_mirror $version
+    
+    # Determine target version
+    local target_version
+    if [ "$version" = "buster" ]; then
+        target_version="bullseye"
+    elif [ "$version" = "bullseye" ]; then
+        target_version="bookworm"
+    else
+        echo "Error: Unsupported version $version"
+        exit 1
+    fi
+    
+    # Update sources to target version
+    update_apt_sources "$version" "$target_version"
 
     # Prepare system for upgrade
     echo "Preparing for upgrade..."
@@ -111,8 +116,12 @@ perform_upgrade() {
     # Update again after installing new keyrings
     DEBIAN_FRONTEND=noninteractive apt-get update
     
-    # Perform the actual upgrade
-    echo "Performing dist-upgrade..."
+    # Perform a minimal upgrade first
+    echo "Performing minimal upgrade..."
+    DEBIAN_FRONTEND=noninteractive apt-get upgrade $APT_OPTIONS --without-new-pkgs
+    
+    # Then do the full upgrade
+    echo "Performing full dist-upgrade..."
     if ! DEBIAN_FRONTEND=noninteractive apt-get dist-upgrade $APT_OPTIONS; then
         echo "dist-upgrade failed, attempting to fix and retry..."
         dpkg --configure -a
@@ -120,19 +129,10 @@ perform_upgrade() {
     fi
     
     DEBIAN_FRONTEND=noninteractive apt-get autoremove $APT_OPTIONS
-
-    if [ "$version" = "jessie" ] || [ "$version" = "stretch" ]; then
-        DEBIAN_FRONTEND=noninteractive apt-get install $APT_OPTIONS locales || true
-        if command -v locale-gen >/dev/null 2>&1; then
-            locale-gen en_US en_US.UTF-8
-            dpkg-reconfigure locales
-            dpkg-reconfigure tzdata
-        fi
-    fi
 }
 
 install_extras() {
-    # Your existing install_extras function here
+    # Extra installations if needed
     true
 }
 
@@ -143,10 +143,6 @@ current_version=$(get_debian_version)
 echo "Current Debian version: $current_version"
 
 case $current_version in
-    "jessie"|"stretch")
-        echo "Starting upgrade path: -> buster -> bullseye -> bookworm"
-        perform_upgrade $current_version
-        ;;
     "buster")
         echo "Starting upgrade path: buster -> bullseye -> bookworm"
         perform_upgrade "buster"
@@ -166,8 +162,8 @@ case $current_version in
 esac
 
 echo "
-Upgrade complete. Please reboot and run this script again if needed.
+Upgrade complete. Please reboot and run this script again to continue to the next version.
 Next steps:
 1. Reboot your system: sudo reboot
-2. After reboot, run this script again to continue the upgrade process.
+2. After reboot, run this script again to upgrade to the next version.
 "

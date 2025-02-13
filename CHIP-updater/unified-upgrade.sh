@@ -258,8 +258,18 @@ EOF
     # Set hostname properly using both methods for compatibility
     echo "$HOSTNAME" > /etc/hostname
     hostname "$HOSTNAME"
-    # Update /etc/hosts file
-    sed -i "s/127.0.1.1.*/127.0.1.1\t$HOSTNAME/g" /etc/hosts
+
+    # Update /etc/hosts file with both localhost and hostname entries
+    cat > /etc/hosts <<EOF
+127.0.0.1   localhost
+127.0.1.1   $HOSTNAME
+
+# The following lines are desirable for IPv6 capable hosts
+::1     localhost ip6-localhost ip6-loopback
+ff02::1 ip6-allnodes
+ff02::2 ip6-allrouters
+EOF
+
     # Use hostnamectl if available
     if command -v hostnamectl >/dev/null 2>&1; then
         hostnamectl set-hostname "$HOSTNAME"

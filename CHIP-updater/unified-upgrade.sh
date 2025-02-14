@@ -76,13 +76,25 @@ EOF
     find /etc/apt -type f -name "*.list" -exec sed -i "s/$version/$target/g" {} +
 }
 
+get_apt_options() {
+    local version=$1
+    case $version in
+        "jessie")
+            echo "-y --force-yes"
+            ;;
+        *)
+            echo "-y --allow-downgrades --allow-remove-essential --allow-change-held-packages"
+            ;;
+    esac
+}
+
 perform_upgrade() {
     local version=$1
     echo "Performing upgrade for $version..."
     
-    # Set apt options
-    APT_OPTIONS="-y --allow-downgrades --allow-remove-essential --allow-change-held-packages"
-
+    # Get correct APT options for this version
+    APT_OPTIONS=$(get_apt_options "$version")
+    
     # Fix extended states before proceeding
     fix_extended_states
     

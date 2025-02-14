@@ -58,12 +58,26 @@ update_apt_sources() {
     rm -f /etc/apt/sources.list.d/*.list
     
     case $target in
+        "jessie")
+            # For Jessie we need to use archive.debian.org
+            # Note: Jessie's apt doesn't support [check-valid-until=no]
+            cat > /etc/apt/sources.list <<EOF
+deb http://archive.debian.org/debian jessie main contrib non-free
+deb http://archive.debian.org/debian-security jessie/updates main contrib non-free
+deb http://archive.debian.org/debian jessie-backports main
+EOF
+            # For Jessie, we need to disable valid-until checks in apt.conf since
+            # its apt version doesn't support the sources.list option
+            cat > /etc/apt/apt.conf.d/99no-check-valid-until <<EOF
+Acquire::Check-Valid-Until "false";
+EOF
+            ;;
         "buster")
             # Clear existing sources.list completely and add only archive sources
             cat > /etc/apt/sources.list <<EOF
-deb http://archive.debian.org/debian/ buster main contrib non-free
-deb http://archive.debian.org/debian/ buster-backports main contrib non-free
-deb http://archive.debian.org/debian-security/ buster-security main contrib non-free
+deb [check-valid-until=no] http://archive.debian.org/debian/ buster main contrib non-free
+deb [check-valid-until=no] http://archive.debian.org/debian/ buster-backports main contrib non-free
+deb [check-valid-until=no] http://archive.debian.org/debian-security/ buster-security main contrib non-free
 EOF
             
             # Add archive.debian.org GPG key

@@ -47,9 +47,10 @@ update_apt_sources() {
     
     case $target in
         "buster")
+            # For Buster, we need to use archive.debian.org and its security archive
             cat > /etc/apt/sources.list <<EOF
-deb [check-valid-until=no] http://archive.debian.org/debian buster main contrib non-free
-deb [check-valid-until=no] http://archive.debian.org/debian-security buster/updates main contrib non-free
+deb http://archive.debian.org/debian buster main contrib non-free
+deb http://archive.debian.org/debian-security buster/updates main contrib non-free
 EOF
             ;;
         "bullseye")
@@ -71,6 +72,11 @@ EOF
             exit 1
             ;;
     esac
+    
+    # Add [check-valid-until=no] for archive.debian.org
+    if [ "$target" = "buster" ]; then
+        sed -i 's|deb http://archive.debian.org|deb [check-valid-until=no] http://archive.debian.org|g' /etc/apt/sources.list
+    fi
     
     # Replace occurrences in any remaining files
     find /etc/apt -type f -name "*.list" -exec sed -i "s/$version/$target/g" {} +

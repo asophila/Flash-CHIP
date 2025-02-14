@@ -73,28 +73,12 @@ Acquire::Check-Valid-Until "false";
 EOF
             ;;
         "buster")
-            # Clear existing sources.list completely and add only archive sources
+            # Using current debian mirrors for buster
             cat > /etc/apt/sources.list <<EOF
-deb [check-valid-until=no] http://archive.debian.org/debian/ buster main contrib non-free
-deb [check-valid-until=no] http://archive.debian.org/debian/ buster-backports main contrib non-free
-deb [check-valid-until=no] http://archive.debian.org/debian-security/ buster-security main contrib non-free
+deb http://deb.debian.org/debian/ buster main
+deb http://security.debian.org/debian-security buster/updates main
 EOF
-            
-            # Add archive.debian.org GPG key
-            echo "Importing archive.debian.org GPG key..."
-            wget -qO- http://archive.debian.org/debian/dists/buster/Release.gpg | apt-key add -
-            
-            # Create apt configuration for archived repositories
-            cat > /etc/apt/apt.conf.d/99archive-repos <<EOF
-Acquire::Check-Valid-Until "false";
-APT::Get::AllowUnauthenticated "true";
-EOF
-
-            # Clean apt cache and old package lists
-            apt-get clean
-            rm -rf /var/lib/apt/lists/*
             ;;
-            
         "bullseye")
             cat > /etc/apt/sources.list <<EOF
 deb http://deb.debian.org/debian bullseye main contrib non-free
@@ -102,7 +86,6 @@ deb http://security.debian.org/debian-security bullseye-security main contrib no
 deb http://deb.debian.org/debian bullseye-updates main contrib non-free
 EOF
             ;;
-            
         "bookworm")
             cat > /etc/apt/sources.list <<EOF
 deb http://deb.debian.org/debian bookworm main contrib non-free-firmware
@@ -110,7 +93,6 @@ deb http://security.debian.org/debian-security bookworm-security main contrib no
 deb http://deb.debian.org/debian bookworm-updates main contrib non-free-firmware
 EOF
             ;;
-            
         *)
             echo "Error: Unsupported target version $target"
             exit 1

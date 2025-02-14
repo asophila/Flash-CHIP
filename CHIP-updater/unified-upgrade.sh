@@ -32,6 +32,18 @@ get_debian_version() {
     grep -o "jessie\|stretch\|buster\|bullseye\|bookworm" /etc/os-release | head -n1 || echo "unknown"
 }
 
+get_apt_options() {
+    local version=$1
+    case $version in
+        "jessie")
+            echo "-y --force-yes"
+            ;;
+        *)
+            echo "-y --allow-downgrades --allow-remove-essential --allow-change-held-packages"
+            ;;
+    esac
+}
+
 update_apt_sources() {
     local version=$1
     local target=$2
@@ -47,13 +59,28 @@ update_apt_sources() {
     
     case $target in
         "buster")
-            # For Buster archive, include backports and correct security path
+            # Clear existing sources.list completely and add only archive sources
             cat > /etc/apt/sources.list <<EOF
-deb [check-valid-until=no] http://archive.debian.org/debian buster main contrib non-free
-deb [check-valid-until=no] http://archive.debian.org/debian buster-backports main contrib non-free
-deb [check-valid-until=no] http://archive.debian.org/debian-security buster/updates main contrib non-free
+deb http://archive.debian.org/debian/ buster main contrib non-free
+deb http://archive.debian.org/debian/ buster-backports main contrib non-free
+deb http://archive.debian.org/debian-security/ buster-security main contrib non-free
 EOF
+            
+            # Add archive.debian.org GPG key
+            echo "Importing archive.debian.org GPG key..."
+            wget -qO- http://archive.debian.org/debian/dists/buster/Release.gpg | apt-key add -
+            
+            # Create apt configuration for archived repositories
+            cat > /etc/apt/apt.conf.d/99archive-repos <<EOF
+Acquire::Check-Valid-Until "false";
+APT::Get::AllowUnauthenticated "true";
+EOF
+
+            # Clean apt cache and old package lists
+            apt-get clean
+            rm -rf /var/lib/apt/lists/*
             ;;
+            
         "bullseye")
             cat > /etc/apt/sources.list <<EOF
 deb http://deb.debian.org/debian bullseye main contrib non-free
@@ -61,6 +88,7 @@ deb http://security.debian.org/debian-security bullseye-security main contrib no
 deb http://deb.debian.org/debian bullseye-updates main contrib non-free
 EOF
             ;;
+            
         "bookworm")
             cat > /etc/apt/sources.list <<EOF
 deb http://deb.debian.org/debian bookworm main contrib non-free-firmware
@@ -68,35 +96,10 @@ deb http://security.debian.org/debian-security bookworm-security main contrib no
 deb http://deb.debian.org/debian bookworm-updates main contrib non-free-firmware
 EOF
             ;;
+            
         *)
             echo "Error: Unsupported target version $target"
             exit 1
-            ;;
-    esac
-    
-    # Force apt to accept archived repos without valid signatures
-    if [ "$target" = "buster" ]; then
-        # Create or modify apt configuration for archived repositories
-        cat > /etc/apt/apt.conf.d/99archive-repos <<EOF
-Acquire::Check-Valid-Until "false";
-APT::Get::AllowUnauthenticated "true";
-EOF
-    fi
-    
-    # Replace occurrences in any remaining files but only for non-buster
-    if [ "$target" != "buster" ]; then
-        find /etc/apt -type f -name "*.list" -exec sed -i "s/$version/$target/g" {} +
-    fi
-}
-
-get_apt_options() {
-    local version=$1
-    case $version in
-        "jessie")
-            echo "-y --force-yes"
-            ;;
-        *)
-            echo "-y --allow-downgrades --allow-remove-essential --allow-change-held-packages"
             ;;
     esac
 }
@@ -131,15 +134,25 @@ perform_upgrade() {
     echo "Preparing for upgrade..."
     DEBIAN_FRONTEND=noninteractive apt-get clean
     
-    # Update package lists
+    # Update package lists with retries
     echo "Updating package lists..."
-    if ! DEBIAN_FRONTEND=noninteractive apt-get update --fix-missing; then
-        echo "Initial update failed, retrying after a short delay..."
-        sleep 5
-        if ! DEBIAN_FRONTEND=noninteractive apt-get update --fix-missing; then
-            echo "ERROR: Unable to update package lists"
-            exit 1
+    local max_retries=3
+    local retry_count=0
+    local update_success=false
+    
+    while [ $retry_count -lt $max_retries ] && [ "$update_success" = false ]; do
+        if DEBIAN_FRONTEND=noninteractive apt-get update --fix-missing; then
+            update_success=true
+        else
+            echo "Update attempt $((retry_count + 1)) failed, retrying after a delay..."
+            sleep 10
+            retry_count=$((retry_count + 1))
         fi
+    done
+    
+    if [ "$update_success" = false ]; then
+        echo "ERROR: Unable to update package lists after $max_retries attempts"
+        exit 1
     fi
     
     # Install new keyrings first
@@ -165,7 +178,7 @@ perform_upgrade() {
 }
 
 install_extras() {
-    APT_OPTIONS="-y --allow-downgrades --allow-remove-essential --allow-change-held-packages"
+    APT_OPTIONS=$(get_apt_options "bookworm")  # We know we're on bookworm here
     echo "Installing quality of life improvements..."
     
     ACTUAL_USER=$(logname || echo $SUDO_USER)
@@ -173,7 +186,7 @@ install_extras() {
     # Install neofetch and basic packages
     DEBIAN_FRONTEND=noninteractive apt-get install $APT_OPTIONS neofetch
     
-    # Configure neofetch to run at login for interactive sessions (only in .bashrc)
+    # Configure neofetch to run at login for interactive sessions
     if ! grep -q "if \[ -n \"\$PS1\" \]; then neofetch; fi" "/home/$ACTUAL_USER/.bashrc"; then
         echo '# Run neofetch for interactive sessions' >> "/home/$ACTUAL_USER/.bashrc"
         echo 'if [ -n "$PS1" ]; then neofetch; fi' >> "/home/$ACTUAL_USER/.bashrc"
@@ -183,13 +196,13 @@ install_extras() {
     chown $ACTUAL_USER:$ACTUAL_USER "/home/$ACTUAL_USER/.profile"
     chown $ACTUAL_USER:$ACTUAL_USER "/home/$ACTUAL_USER/.bashrc"
     
-    # Add backports repository for newer Go version
+    # Add backports repository
     if ! grep -q "bookworm-backports" /etc/apt/sources.list; then
         echo "deb http://deb.debian.org/debian bookworm-backports main" >> /etc/apt/sources.list
     fi
     apt-get update
 
-    # Install wireguard tools and dependencies
+    # Install necessary packages
     DEBIAN_FRONTEND=noninteractive apt-get install $APT_OPTIONS \
         wireguard-tools \
         git \
@@ -200,7 +213,7 @@ install_extras() {
     # Install Go from backports
     DEBIAN_FRONTEND=noninteractive apt-get install -t bookworm-backports $APT_OPTIONS golang
 
-    # Build and install wireguard-go from source
+    # Build and install wireguard-go
     echo "Building wireguard-go from source..."
     cd /tmp
     rm -rf wireguard-go
@@ -213,11 +226,11 @@ install_extras() {
     cd /
     rm -rf /tmp/wireguard-go
     
-    # Create startup script with proper permissions
+    # Create startup script
     cat > /home/$ACTUAL_USER/startup.sh <<EOF
 #!/bin/bash
 
-# Wait for network to be fully up
+# Wait for network
 for i in {1..30}; do
     if ping -c 1 8.8.8.8 >/dev/null 2>&1; then
         break
@@ -245,14 +258,14 @@ done
 exit 1
 EOF
     
-    # Set proper permissions immediately after creation
+    # Set proper permissions
     chmod +x /home/$ACTUAL_USER/startup.sh
     chown $ACTUAL_USER:$ACTUAL_USER /home/$ACTUAL_USER/startup.sh
     
     # Ensure curl is installed
     DEBIAN_FRONTEND=noninteractive apt-get install $APT_OPTIONS curl
 
-    # Create and configure systemd service for startup script
+    # Create systemd service
     cat > /etc/systemd/system/chip-startup.service <<EOF
 [Unit]
 Description=CHIP Startup Service
@@ -279,20 +292,22 @@ EOF
     systemctl enable chip-startup.service
     systemctl start chip-startup.service
     
+    # Get ntfy channel name
     echo -n "Insert a name for the ntfy.sh channel (default: secret_ip): "
     read NTFY_CHANNEL
     NTFY_CHANNEL=${NTFY_CHANNEL:-secret_ip}
     sed -i "s/\$NTFY_CHANNEL/$NTFY_CHANNEL/g" /home/$ACTUAL_USER/startup.sh
     
+    # Get hostname
     echo -n "Insert a name for this host (default: chip): "
     read HOSTNAME
     HOSTNAME=${HOSTNAME:-chip}
     
-    # Set hostname properly using both methods for compatibility
+    # Set hostname
     echo "$HOSTNAME" > /etc/hostname
     hostname "$HOSTNAME"
 
-    # Update /etc/hosts file with both localhost and hostname entries
+    # Update hosts file
     cat > /etc/hosts <<EOF
 127.0.0.1   localhost
 127.0.1.1   $HOSTNAME
@@ -318,11 +333,6 @@ echo "Current Debian version: $current_version"
 case $current_version in
     "jessie")
         echo "Starting upgrade path: jessie -> buster -> bullseye -> bookworm"
-        # Add jessie-specific sources first
-        cat > /etc/apt/sources.list <<EOF
-deb [check-valid-until=no] http://archive.debian.org/debian/ jessie main contrib non-free
-deb-src [check-valid-until=no] http://archive.debian.org/debian/ jessie main contrib non-free
-EOF
         perform_upgrade "jessie"
         ;;
     "buster")
